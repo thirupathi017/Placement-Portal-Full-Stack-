@@ -1,14 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Briefcase, Users, CheckCircle, BarChart3, Plus, ArrowRight } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Briefcase, Users, CheckCircle, BarChart3, Plus, ArrowRight, Trash2, TriangleAlert, X, Loader2 } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 import StatCard from '../components/StatCard';
 import axiosInstance from '../api/axiosInstance';
+import useAuthStore from '../store/authStore';
 
 const CompanyDashboard = () => {
   const [stats, setStats] = useState({ activeJobs: 0, totalApplicants: 0, shortlisted: 0 });
   const [recentJobs, setRecentJobs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+  const { logout } = useAuthStore();
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -29,6 +34,19 @@ const CompanyDashboard = () => {
     };
     fetchData();
   }, []);
+
+  const handleDeleteAccount = async () => {
+    setDeleteLoading(true);
+    try {
+      await axiosInstance.delete('/api/auth/me');
+      logout();
+      navigate('/login');
+    } catch (err) {
+      setDeleteLoading(false);
+      setShowDeleteModal(false);
+      alert('Failed to delete account. Please try again later.');
+    }
+  };
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
@@ -95,8 +113,72 @@ const CompanyDashboard = () => {
             </div>
             <Link to="/company/reports" className="btn btn-secondary w-full text-sm text-center">View Full Report</Link>
           </div>
+          
+          <div className="mt-8 border-t border-rose-200 dark:border-rose-900/50 pt-8">
+            <h2 className="text-xl font-bold mb-4 text-rose-600 dark:text-rose-400">Danger Zone</h2>
+            <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/50 rounded-2xl p-6">
+              <p className="text-slate-600 dark:text-slate-400 text-sm mb-4">
+                Permanently delete your account and all associated job postings. This action cannot be undone.
+              </p>
+              <button
+                id="delete-account-btn"
+                onClick={() => setShowDeleteModal(true)}
+                className="btn bg-rose-600 hover:bg-rose-700 text-white border-none w-full flex items-center justify-center space-x-2"
+              >
+                <Trash2 size={18} />
+                <span>Delete My Account</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => !deleteLoading && setShowDeleteModal(false)}>
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-md w-full p-8 border border-rose-200 dark:border-rose-900/50" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center space-x-3">
+                <div className="p-2 bg-rose-100 dark:bg-rose-950 rounded-xl">
+                  <TriangleAlert className="text-rose-600" size={24} />
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white">Delete Company Account</h3>
+              </div>
+              {!deleteLoading && (
+                <button onClick={() => setShowDeleteModal(false)} className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                  <X size={20} className="text-slate-500" />
+                </button>
+              )}
+            </div>
+            <p className="text-slate-600 dark:text-slate-400 mb-2">
+              Are you absolutely sure? This will permanently delete:
+            </p>
+            <ul className="list-disc list-inside text-sm text-slate-500 dark:text-slate-400 space-y-1 mb-6 pl-2">
+              <li>Your company account and profile</li>
+              <li>All job postings you have created</li>
+              <li>All applications received from students</li>
+            </ul>
+            <div className="flex space-x-3">
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                disabled={deleteLoading}
+                className="btn btn-secondary flex-1"
+              >
+                Cancel
+              </button>
+              <button
+                id="confirm-delete-btn"
+                onClick={handleDeleteAccount}
+                disabled={deleteLoading}
+                className="btn bg-rose-600 hover:bg-rose-700 text-white border-none flex-1 flex items-center justify-center space-x-2"
+              >
+                {deleteLoading ? <Loader2 className="animate-spin" size={18} /> : <Trash2 size={18} />}
+                <span>{deleteLoading ? 'Deleting...' : 'Yes, Delete'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

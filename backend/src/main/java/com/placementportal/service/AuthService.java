@@ -10,8 +10,14 @@ import com.placementportal.model.StudentProfile;
 import com.placementportal.model.User;
 import com.placementportal.model.enums.Role;
 import com.placementportal.repository.CompanyProfileRepository;
+import com.placementportal.model.Application;
+import com.placementportal.model.JobPosting;
+import com.placementportal.repository.ApplicationRepository;
+import com.placementportal.repository.JobPostingRepository;
+import com.placementportal.repository.NotificationRepository;
 import com.placementportal.repository.StudentProfileRepository;
 import com.placementportal.repository.UserRepository;
+import java.util.List;
 import com.placementportal.service.NotificationService;
 import com.placementportal.security.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +40,9 @@ public class AuthService {
     private final JwtTokenProvider tokenProvider;
     private final AuthenticationManager authenticationManager;
     private final NotificationService notificationService;
+    private final NotificationRepository notificationRepository;
+    private final ApplicationRepository applicationRepository;
+    private final JobPostingRepository jobPostingRepository;
 
     @Transactional
     public User register(RegisterRequest request) {
@@ -108,6 +117,45 @@ public class AuthService {
     public User getCurrentUser() {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         return userRepository.findByEmail(email).orElseThrow();
+    }
+
+    @Transactional
+    public void deleteCurrentUser() {
+        User user = getCurrentUser();
+
+        // 1. Delete notifications sent TO the user
+        notificationRepository.deleteByUser(user);
+
+        if (user.getRole() == Role.STUDENT) {
+            StudentProfile student = studentProfileRepository.findByUserId(user.getId()).orElse(null);
+            if (student != null) {
+                // Delete notifications referencing this student (e.g. "New application from X")
+                notificationRepository.deleteByMessageContaining(user.getName());
+
+                List<Application> applications = applicationRepository.findByStudent(student);
+                applicationRepository.deleteAll(applications);
+                studentProfileRepository.delete(student);
+            }
+        } else if (user.getRole() == Role.COMPANY) {
+            CompanyProfile company = companyProfileRepository.findByUserId(user.getId()).orElse(null);
+            if (company != null) {
+                String companyName = company.getCompanyName();
+                
+                // Delete admin/student notifications referencing this company (Registration, Job Postings, Status Updates)
+                notificationRepository.deleteByMessageContaining(companyName);
+
+                List<JobPosting> jobs = jobPostingRepository.findByCompany(company);
+                for (JobPosting job : jobs) {
+                    // Also delete notifications specifically mentioning the job title
+                    notificationRepository.deleteByMessageContaining(job.getTitle());
+                }
+                jobPostingRepository.deleteAll(jobs);
+                companyProfileRepository.delete(company);
+            }
+        }
+
+        // 2. Finally delete the user account (triggers DB CASCADE for remaining links)
+        userRepository.delete(user);
     }
 
     private StudentProfileDTO toStudentDTO(StudentProfile s) {
